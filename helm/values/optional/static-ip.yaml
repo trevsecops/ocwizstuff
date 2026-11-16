@@ -4,9 +4,6 @@
 # DNS resolution of the -si FQDNs must still work (see docs/NETWORK-EGRESS.md).
 # Not supported together with the Sensor-based Workload Scanner.
 
-global:
-  podCustomEnvironmentVariables:
-    - name: USE_WIZ_STATIC_IP_ENDPOINTS
-      value: "true"
-    - name: WIZ_SKIP_BACKEND_COMMUNICATION
-      value: "1"
+podCustomEnvironmentVariables:
+  - name: USE_WIZ_STATIC_IP_ENDPOINTS
+    value: "true"
