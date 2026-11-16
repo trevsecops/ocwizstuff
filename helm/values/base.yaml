@@ -1,0 +1,50 @@
+# Wiz on OpenShift (on-prem) - values shared by every cluster.
+# Chart: wiz-sec/wiz-kubernetes-integration (version pinned in .gitlab-ci.yml)
+# Scope: Runtime Sensor + Kubernetes Connector + Broker. Admission Controller is off.
+#
+# No credentials belong in this file. The Wiz service account is stored in CyberArk and synced
+# into the wiz-api-token Secret by the External Secrets Operator (manifests/external-secrets).
+
+global:
+  wizApiToken:
+    secret:
+      create: false          # synced from CyberArk by an ExternalSecret
+      name: wiz-api-token    # keys: clientId, clientToken
+
+  # OpenShift automatic UID for the Connector and Broker pods.
+  # Empty maps let OpenShift assign the first UID/GID of the namespace range (restricted-v2 SCC).
+  # The Sensor is not affected by these two keys. It gets its own SCC (wiz-sensor.openshift).
+  lowPrivilegePodSecurityPolicy: {}
+  lowPrivilegeSecurityPolicy: {}
+
+wiz-kubernetes-connector:
+  enabled: true
+  image:
+    registry: "<PRIVATE_REGISTRY>/wiz-app"     # image: <PRIVATE_REGISTRY>/wiz-app/wiz-broker
+  autoCreateConnector:
+    clusterFlavor: OpenShift
+  wiz-broker:
+    enabled: true                              # outbound tunnel, no inbound access from Wiz
+    image:
+      registry: "<PRIVATE_REGISTRY>/wiz-app"
+
+wiz-sensor:
+  enabled: true
+  openshift: true                              # chart creates the SCC bound to the Sensor ServiceAccount
+  image:
+    # The Sensor image is already mirrored internally. This repo does not pull it from Wiz.
+    # Point these values at the existing copy. Final reference: <registry>/<repository>:<tag>
+    registry: "<SENSOR_IMAGE_REGISTRY>"
+    repository: "sensor"                       # change if the existing mirror uses another path
+    tag: "v1"                                  # change if the existing mirror uses another tag
+    # Optional change-control pin. When set it overrides the floating v1 tag.
+    # sha256: ""
+  imagePullSecret:
+    # Image comes from the internal mirror, pulled without a namespace pull secret
+    # (anonymous pull, or the cluster global pull secret already covers it).
+    # If the internal registry needs credentials, add helm/values/optional/pull-secret.yaml.
+    required: false
+    create: false
+
+wiz-admission-controller:
+  enabled: false
