@@ -1,28 +1,26 @@
-# Wiz Runtime Sensor + Kubernetes Connector/Broker on OpenShift (on-prem)
+# Wiz Runtime Sensor on OpenShift (on-prem)
 #
-# Flow:  validate -> render -> (mirror) -> deploy -> verify
+# Flow:  validate -> render -> deploy -> verify
 #   validate, render   every merge request and every commit on the default branch
-#   mirror             manual or scheduled, default branch only
 #   deploy, verify     manual, default branch only, one job per cluster, gated by GitLab environments
 #
-# Credentials are CI/CD variables, never files in this repository. See README.md for the list.
+# The Wiz credential comes from CyberArk. Cluster tokens are CI/CD variables. Nothing secret is in Git.
 
 stages:
   - validate
   - render
-  - mirror
   - deploy
   - verify
 
 variables:
   WIZ_NAMESPACE: "wiz"
-  HELM_RELEASE: "wiz-integration"
+  HELM_RELEASE: "wiz-sensor"
   # Point this at the internal Helm proxy if runners cannot reach charts.wiz.io.
   # The public index serves chart archives from wiz-sec.github.io, so both hosts are needed without a proxy.
   WIZ_HELM_REPO_URL: "https://charts.wiz.io/"
-  WIZ_CHART: "wiz-kubernetes-integration"
+  WIZ_CHART: "wiz-sensor"
   # Pinned on purpose. Bump through a merge request and review the render job diff.
-  WIZ_CHART_VERSION: "0.3.94"
+  WIZ_CHART_VERSION: "1.0.13112"
   HELM_TIMEOUT: "15m"
   # Space-separated overlay names from helm/values/optional, for example "proxy pull-secret".
   # Override per cluster with an environment-scoped CI/CD variable of the same name.
@@ -51,7 +49,7 @@ workflow:
 
 .default-branch-manual:
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
 
 lint:
@@ -71,21 +69,6 @@ render:
     paths:
       - rendered/
     expire_in: 30 days
-
-mirror-images:
-  stage: mirror
-  # Broker image only. The Sensor image is already mirrored internally and is not handled here.
-  # Skip this job entirely if the Broker image is mirrored by the same internal process.
-  # Needs a runner with egress to wiziopublic.azurecr.io and *.blob.core.windows.net.
-  # Variables: PRIVATE_REGISTRY, PRIVATE_REGISTRY_USERNAME, PRIVATE_REGISTRY_PASSWORD
-  script:
-    - scripts/mirror-images.sh
-  rules:
-    # Optional pipeline schedule to refresh the Broker image.
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $MIRROR_IMAGES == "true"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
-      when: manual
-      allow_failure: true
 
 deploy:
   stage: deploy
