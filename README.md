@@ -62,8 +62,7 @@ docs/NETWORK-EGRESS.md              firewall request for us44
 
 Also rename `nonprod-example.yaml` to the real cluster name and update the `CLUSTER` matrix in `.gitlab-ci.yml`.
 
-## CI/CD variables to create in GitLab (never in Git)
-
+## CI/CD variables to create in GitLab
 | Variable | Scope | Flags | Purpose |
 |---|---|---|---|
 | `OPENSHIFT_API_URL` | environment `openshift/<cluster>` | protected | API server URL of that cluster |
