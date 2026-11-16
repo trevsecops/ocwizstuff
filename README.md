@@ -74,7 +74,7 @@ Also rename `nonprod-example.yaml` to the real cluster name and update the `CLUS
 
 **The Wiz service account credential is not a GitLab variable.** It lives in CyberArk and reaches the cluster through the External Secrets Operator.
 
-Protected variables are only exposed on protected branches, so deploys run from the default branch only. Mark the `openshift/*` production environments as protected environments and restrict who can run the manual deploy job.
+Protected variables are only exposed on protected branches, so deploys run from the default branch only.
 
 ## Which secrets are needed
 
