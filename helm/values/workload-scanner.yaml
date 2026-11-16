@@ -1,0 +1,12 @@
+# Sensor-based Workload Scanner (vulnerability and host configuration scanning of on-prem nodes).
+# Runs as a second container (wiz-disk-scanner) in the Sensor pod under the same SCC.
+# Before enabling:
+#   - confirm licensing (Wiz for On-prem billing) with the Cloud Security Team
+#   - have wizio.azurecr.io/wiz-app/wiz-workload-scanner:v1 added to the existing internal Sensor mirror,
+#     under the same registry as the Sensor image (path wiz-app/wiz-workload-scanner)
+#   - open the extra egress listed in docs/NETWORK-EGRESS.md
+#   - do not combine with static-ip.yaml
+
+wiz-sensor:
+  diskScan:
+    enabled: true
