@@ -1,24 +1,16 @@
 # Example cluster file. Rename to the real cluster name and replace every placeholder.
 
-global:
-  # Name shown in Wiz for the Sensor and Connector of this cluster (on-prem clusters only).
-  clusterDisplayName: "<CLUSTER_NAME>"
-  clusterTags:
-    environment: "<ENVIRONMENT>"
-  # Optional. Groups on-prem clusters under one Subscription object so they can be mapped to Wiz Projects.
-  # subscriptionExternalId: ""
-  # subscriptionTags: {}
+# Name shown in Wiz for this cluster. Applies to on-prem clusters.
+sensorClusterName: "<CLUSTER_NAME>"
 
-wiz-kubernetes-connector:
-  autoCreateConnector:
-    connectorName: "<CONNECTOR_NAME>"
-    # Set a unique value per cluster if several clusters share the same cluster CA (ca.crt).
-    # clusterExternalId: ""
+clusterTags:
+  environment: "<ENVIRONMENT>"
+
+# Optional. Groups on-prem clusters under one Subscription object so they can be mapped to Wiz Projects.
+# subscriptionExternalId: ""
+# subscriptionTags: {}
 
 # Tainted nodes that the chart defaults do not already tolerate.
-# wiz-sensor:
-#   daemonset:
-#     tolerations:
-#       - key: ""
-#         operator: Exists
-#         effect: NoSchedule
+# Note: this list replaces the chart default list, so copy the defaults you still need.
+# daemonset:
+#   tolerations: []
