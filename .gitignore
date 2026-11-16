@@ -1,0 +1,11 @@
+# Rendered output and local scratch
+rendered/
+*.tgz
+# Never commit credentials or local cluster config
+*.env
+.env*
+kubeconfig*
+*.kubeconfig
+values-secret*.yaml
+*.pem
+*.key
