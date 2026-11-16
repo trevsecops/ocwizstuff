@@ -1,17 +1,11 @@
-# Enable when the cluster reaches Wiz through an HTTP(S) proxy.
+# Enable when the Sensor reaches Wiz through an HTTP(S) proxy.
 # The proxy Secret is created outside Helm (it can hold proxy credentials), in the wiz namespace:
 #
 #   oc -n wiz create secret generic wiz-proxy \
-#     --from-literal=httpProxy='<proxy url>' \
 #     --from-literal=httpsProxy='<proxy url>' \
-#     --from-literal=noProxyAddress='kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local' \
-#     --from-file=caCertificate=<proxy CA pem>      # only for TLS-inspecting proxies, used by the Sensor
-#
-# noProxyAddress does not apply to the Sensor. Keep the kubernetes service names in it for the Broker.
-# The proxy must pass HTTP/2 to agent.<dc>.app.wiz.io.
+#     --from-file=caCertificate=<proxy CA pem>      # only for TLS-inspecting proxies
 
-global:
-  httpProxyConfiguration:
-    enabled: true
-    create: false
-    secretName: wiz-proxy
+httpProxyConfiguration:
+  enabled: true
+  create: false
+  secretName: wiz-proxy
