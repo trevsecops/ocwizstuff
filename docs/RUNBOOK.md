@@ -1,10 +1,10 @@
-# Runbook: Wiz Sensor and Connector on OpenShift
+# Runbook: Wiz Runtime Sensor on OpenShift
 
 ## 1. One-time prerequisites
 
 **Wiz (Cloud Security Team)**
 
-1. Create a service account of type **Complete Kubernetes Integration** under Settings > Access Management > Service Accounts. The Client Secret is shown once.
+1. Create a service account of type **Sensor** under Settings > Access Management > Service Accounts. The Client Secret is shown once.
 2. Store the Client ID and Client Secret in CyberArk straight from the Wiz dialog. Do not send them through chat or email and do not put them in GitLab.
 3. Decide whether clusters share one service account or get one each. Rotating a secret invalidates the old one immediately, so one account per environment tier limits the blast radius of a rotation.
 
@@ -32,8 +32,6 @@ The Sensor image is already mirrored internally and this repo does not pull it f
 
 Also ask how often that mirror is refreshed. The Sensor only gets new versions when the mirrored copy moves.
 
-The Broker image `wiz-app/wiz-broker:<tag from the render job>` must exist under `<PRIVATE_REGISTRY>` as well. The connector job and the Broker both use it. If it is not already mirrored, run `mirror-images`. It comes from the public Wiz registry and needs no Wiz credentials.
-
 ## 2. Add a cluster
 
 1. Copy `helm/values/clusters/_template.yaml` to `<cluster>.yaml` and replace the placeholders.
@@ -54,13 +52,11 @@ The `deploy` and `verify` jobs check the following.
 
 - `ExternalSecret` `wiz-api-token` is Ready.
 - Sensor DaemonSet rolled out on every eligible node.
-- Sensor pod admitted under the chart SCC `wiz-integration-wiz-sensor-scc`.
+- Sensor pod admitted under the chart SCC `wiz-sensor-scc`.
 - Sensor log contains `ending content update`, which proves authentication and content download.
-- Connector and Broker deployments are Available.
 
 Then confirm in the Wiz portal.
 
-- Settings > Deployments > Cloud Connector shows the cluster connector as connected.
 - Settings > Deployments > Sensors shows the Sensors as Active within about 10 minutes.
 
 Optional end-to-end test: run the Wiz Runtime Sensor Validator from a throwaway pod and look for a Malware Execution event under Explorer > Cloud Events with Origin set to Wiz Sensor. The validator is a benign test file. Use an internally mirrored base image for the test pod.
@@ -68,7 +64,7 @@ Optional end-to-end test: run the Wiz Runtime Sensor Validator from a throwaway 
 ## 5. Upgrade
 
 1. Change `WIZ_CHART_VERSION` in `.gitlab-ci.yml` through a merge request.
-2. Compare the `render` image list with `images/images.txt` and with the existing Sensor mirror. Update the Broker tag and run `mirror-images` if it changed.
+2. Compare the image reference in the `render` output with what the existing Sensor mirror holds.
 3. Deploy to non-production first, then production.
 
 The Sensor image tag `v1` is a floating tag. The Sensor version on the clusters follows whatever the existing internal mirror holds, so its refresh cadence is the Sensor upgrade cadence. Pin `wiz-sensor.image.sha256` if change control requires an immutable reference.
@@ -76,8 +72,8 @@ The Sensor image tag `v1` is a floating tag. The Sensor version on the clusters 
 ## 6. Rollback
 
 ```
-helm -n wiz history wiz-integration
-helm -n wiz rollback wiz-integration <revision> --wait
+helm -n wiz history wiz-sensor
+helm -n wiz rollback wiz-sensor <revision> --wait
 ```
 
 Or revert the merge request and re-run `deploy`.
@@ -85,10 +81,10 @@ Or revert the merge request and re-run `deploy`.
 ## 7. Uninstall
 
 ```
-helm -n wiz uninstall wiz-integration
+helm -n wiz uninstall wiz-sensor
 ```
 
-The uninstall hook deletes the connector in Wiz. Delete the namespace only when decommissioning, because that also removes the secrets.
+Delete the namespace only when decommissioning, because that also removes the secrets.
 
 ## 8. Rotate the Wiz service account secret
 
@@ -98,7 +94,7 @@ Wiz invalidates the old secret the moment a new one is issued. Tokens already is
 2. Update the object in CyberArk.
 3. Force the sync on each cluster instead of waiting for `refreshInterval`:
    `oc -n wiz annotate externalsecret wiz-api-token force-sync=$(date +%s) --overwrite`
-4. Restart the workloads so they read the new value: `oc -n wiz rollout restart ds,deploy`.
+4. Restart the workloads so they read the new value: `oc -n wiz rollout restart ds`.
 5. Run the `verify` job.
 
 A zero-downtime rotation needs two service accounts and a switch of the CyberArk object between them. Plan that separately if it is required.
@@ -110,10 +106,8 @@ A zero-downtime rotation needs two service accounts and a switch of the CyberArk
 | `deploy` stops at "ExternalSecret did not become Ready" | The job prints the operator condition. Usual causes are a wrong store name or kind, a wrong CyberArk path, missing read permission for the operator identity, or an operator version that only serves `external-secrets.io/v1beta1` |
 | Pods fail to authenticate after a rotation | The cluster still holds the old value. Force the sync and restart the workloads (section 8) |
 | `ImagePullBackOff` | Image and tag exist in the mirror with the same path. If the registry needs credentials enable the `pull-secret` overlay. Remember that the Sensor only uses a pull secret when `imagePullSecret.required` is `true` |
-| Connector or Broker pod rejected with a UID or SCC error | `oc describe project wiz` and read `openshift.io/sa.scc.uid-range`. The two empty `lowPrivilege...Policy` maps in `base.yaml` enable automatic UID. If that fails, remove those two keys and set `podSecurityContext.runAsUser` and `securityContext.runAsUser` under `wiz-kubernetes-connector` to a UID from the range |
 | Sensor pod rejected by admission | The SCC was not created or bound. Confirm `wiz-sensor.openshift: true` and that the deployer could create SecurityContextConstraints |
 | No `ending content update` in the Sensor log | Egress to `auth.app.wiz.io`, `agent.us44.app.wiz.io` and `prod-us44-sensor.app.wiz.io`. A TLS-inspecting proxy needs the `proxy` overlay with its CA |
-| Connector job fails or connector missing in the portal | Service account type must be Complete Kubernetes Integration. Check the create-connector job log and Broker log. Check HTTP/2 through the proxy |
 | Sensor missing on some nodes | Node taints. The chart already tolerates control-plane, infra and ODF storage nodes. Add other tolerations in the cluster file |
 | Findings appear on the Sensor DaemonSet itself | Expected. Wiz applies its Pod Security Standards rules to its own Sensor. Handle through the normal exception process |
 
