@@ -1,0 +1,116 @@
+# Wiz Runtime Sensor + Kubernetes Connector/Broker on OpenShift (on-prem)
+#
+# Flow:  validate -> render -> (mirror) -> deploy -> verify
+#   validate, render   every merge request and every commit on the default branch
+#   mirror             manual or scheduled, default branch only
+#   deploy, verify     manual, default branch only, one job per cluster, gated by GitLab environments
+#
+# Credentials are CI/CD variables, never files in this repository. See README.md for the list.
+
+stages:
+  - validate
+  - render
+  - mirror
+  - deploy
+  - verify
+
+variables:
+  WIZ_NAMESPACE: "wiz"
+  HELM_RELEASE: "wiz-integration"
+  # Point this at the internal Helm proxy if runners cannot reach charts.wiz.io.
+  # The public index serves chart archives from wiz-sec.github.io, so both hosts are needed without a proxy.
+  WIZ_HELM_REPO_URL: "https://charts.wiz.io/"
+  WIZ_CHART: "wiz-kubernetes-integration"
+  # Pinned on purpose. Bump through a merge request and review the render job diff.
+  WIZ_CHART_VERSION: "0.3.94"
+  HELM_TIMEOUT: "15m"
+  # Space-separated overlay names from helm/values/optional, for example "proxy pull-secret".
+  # Override per cluster with an environment-scoped CI/CD variable of the same name.
+  EXTRA_VALUES: ""
+  # external = wiz-api-token is synced from CyberArk by the External Secrets Operator (standard).
+  # ci       = fallback, written from the masked variables WIZ_CLIENT_ID / WIZ_CLIENT_SECRET.
+  SECRETS_MODE: "external"
+
+default:
+  # Internal image that provides: bash, helm >= 3.11, oc, skopeo, yamllint, shellcheck.
+  image: "<CI_TOOLS_IMAGE>"
+  tags:
+    - "<RUNNER_TAG>"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# One entry per file in helm/values/clusters (file name without .yaml).
+.clusters:
+  parallel:
+    matrix:
+      - CLUSTER:
+          - "nonprod-example"
+
+.default-branch-manual:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
+
+lint:
+  stage: validate
+  script:
+    - yamllint -c .yamllint.yml .gitlab-ci.yml helm manifests
+    - shellcheck -x -P scripts scripts/*.sh
+    - scripts/check-placeholders.sh
+
+render:
+  stage: render
+  extends: .clusters
+  script:
+    - scripts/render.sh
+  artifacts:
+    name: "rendered-$CLUSTER"
+    paths:
+      - rendered/
+    expire_in: 30 days
+
+mirror-images:
+  stage: mirror
+  # Broker image only. The Sensor image is already mirrored internally and is not handled here.
+  # Skip this job entirely if the Broker image is mirrored by the same internal process.
+  # Needs a runner with egress to wiziopublic.azurecr.io and *.blob.core.windows.net.
+  # Variables: PRIVATE_REGISTRY, PRIVATE_REGISTRY_USERNAME, PRIVATE_REGISTRY_PASSWORD
+  script:
+    - scripts/mirror-images.sh
+  rules:
+    # Optional pipeline schedule to refresh the Broker image.
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MIRROR_IMAGES == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
+      allow_failure: true
+
+deploy:
+  stage: deploy
+  extends:
+    - .clusters
+    - .default-branch-manual
+  # Environment-scoped variables: OPENSHIFT_API_URL, OPENSHIFT_TOKEN, optional OPENSHIFT_CA_FILE.
+  # The Wiz credential is not a CI variable. It is synced from CyberArk (manifests/external-secrets).
+  environment:
+    name: openshift/$CLUSTER
+  resource_group: wiz-$CLUSTER
+  script:
+    - scripts/oc-login.sh
+    - scripts/deploy.sh
+    - scripts/validate.sh
+
+verify:
+  stage: verify
+  extends:
+    - .clusters
+    - .default-branch-manual
+  environment:
+    name: openshift/$CLUSTER
+    action: verify
+  script:
+    - scripts/oc-login.sh
+    - scripts/validate.sh
+  allow_failure: true
