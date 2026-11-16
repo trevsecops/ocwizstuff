@@ -1,0 +1,12 @@
+# Enable when the firewall can only allow IP addresses, not FQDNs.
+# Prerequisites: Wiz Support enables Static IP for the tenant, and the Runtime Sensor Static IPs
+# from Tenant Info > Wiz IPs are allowed outbound on 443.
+# DNS resolution of the -si FQDNs must still work (see docs/NETWORK-EGRESS.md).
+# Not supported together with the Sensor-based Workload Scanner.
+
+global:
+  podCustomEnvironmentVariables:
+    - name: USE_WIZ_STATIC_IP_ENDPOINTS
+      value: "true"
+    - name: WIZ_SKIP_BACKEND_COMMUNICATION
+      value: "1"
