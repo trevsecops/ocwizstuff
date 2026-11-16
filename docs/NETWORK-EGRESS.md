@@ -1,34 +1,33 @@
-# Network egress for Wiz on OpenShift (data center us44)
+# Network egress for the Wiz Runtime Sensor on OpenShift (data center us44)
 
-All traffic is outbound TCP 443. Nothing inbound from Wiz is required because the Broker opens the tunnel from inside the cluster.
+All traffic is outbound TCP 443 from the cluster nodes. Nothing inbound from Wiz is required.
 
-## From the OpenShift cluster nodes and pods
+## From the OpenShift cluster nodes
 
-| FQDN | Used by | Purpose |
-|---|---|---|
-| `auth.app.wiz.io` | Sensor, Connector, Broker | Authentication to the tenant |
-| `agent.us44.app.wiz.io` | Sensor, Connector, Broker | Tenant communication. The Broker requires HTTP/2 on this path |
-| `prod-us44-sensor.app.wiz.io` | Sensor | Definitions, logs and detections |
-| `prod-us44-sensor-pubsub.app.wiz.io` | Sensor | Real-time communication backend |
-| `logs-ingestion.wiz.io` | Broker 3.x | Telemetry |
-| `tunnel.us44.app.wiz.io` | Broker | Listed in the Connector requirements. The Broker page marks it as needed only before Broker 3.0.0. Request it to be safe |
-| Internal registry | Nodes | Image pulls for the Sensor and Broker from the internal mirror |
+| FQDN | Purpose |
+|---|---|
+| `auth.app.wiz.io` | Sensor authentication to the tenant |
+| `agent.us44.app.wiz.io` | Download definitions, send logs, report detections |
+| `prod-us44-sensor.app.wiz.io` | Sensor to tenant communication |
+| `prod-us44-sensor-pubsub.app.wiz.io` | Real-time communication backend |
+| Internal registry | Sensor image pull from the existing internal mirror |
 
-Not needed from the cluster when images are mirrored: `wizio.azurecr.io`, `wiziopublic.azurecr.io`, `*.blob.core.windows.net`.
+Not needed from the cluster because the image is mirrored: `wizio.azurecr.io`, `*.blob.core.windows.net`.
 
 The us44 FQDNs resolve to dynamic IP addresses. A firewall that cannot filter by FQDN needs the static IP option below.
 
 ## From the GitLab runner
 
-| FQDN | Job | Purpose |
+| Destination | Job | Purpose |
 |---|---|---|
-| `charts.wiz.io` and `wiz-sec.github.io` | render, deploy | Helm repository index and chart archives. Not needed if `WIZ_HELM_REPO_URL` points at an internal Helm proxy |
-| `wiziopublic.azurecr.io` | mirror-images | Broker image source. Only if this repo mirrors the Broker |
-| `*.blob.core.windows.net` | mirror-images | Azure Container Registry data endpoints |
+| `charts.wiz.io` and `wiz-sec.github.io` | render, deploy | Helm repository index and chart archive. Not needed if `WIZ_HELM_REPO_URL` points at an internal Helm proxy |
 | OpenShift API server of each cluster | deploy, verify | `oc` and `helm` |
-| Internal registry | mirror-images | Push target for the Broker image |
 
-The runner needs no access to `wizio.azurecr.io`. The Sensor image is supplied by the existing internal mirror.
+The runner needs no access to any Wiz container registry.
+
+## From the External Secrets Operator
+
+The operator on each cluster must reach the CyberArk endpoint configured in its secret store. That path is owned by the platform and CyberArk teams.
 
 ## Optional: static IP egress (`static-ip` overlay)
 
@@ -51,6 +50,6 @@ The Workload Scanner does not support static IP mode.
 
 ## Proxies
 
-A TLS-inspecting proxy needs the `proxy` overlay with the proxy CA certificate, otherwise the Sensor rejects the connection. Zscaler disables HTTP/2 by default and the Broker needs it.
+A TLS-inspecting proxy needs the `proxy` overlay with the proxy CA certificate, otherwise the Sensor rejects the connection.
 
 Wiz publishes a network troubleshooting tool that runs test pods in the cluster against these endpoints. Run it before the first deploy on any cluster behind a strict firewall: https://docs.wiz.io/docs/wiz-deployment-network-troubleshooting-tool
