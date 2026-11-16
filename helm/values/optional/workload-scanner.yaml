@@ -7,6 +7,5 @@
 #   - open the extra egress listed in docs/NETWORK-EGRESS.md
 #   - do not combine with static-ip.yaml
 
-wiz-sensor:
-  diskScan:
-    enabled: true
+diskScan:
+  enabled: true
