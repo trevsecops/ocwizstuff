@@ -1,99 +1,48 @@
-# Wiz Runtime Sensor on OpenShift (on-prem)
-#
-# Flow:  validate -> render -> deploy -> verify
-#   validate, render   every merge request and every commit on the default branch
-#   deploy, verify     manual, default branch only, one job per cluster, gated by GitLab environments
-#
-# The Wiz credential comes from CyberArk. Cluster tokens are CI/CD variables. Nothing secret is in Git.
-
+# Wiz Runtime Sensor -> OpenShift (Helm). Sensor only.
 stages:
-  - validate
-  - render
+  - lint
   - deploy
-  - verify
 
 variables:
-  WIZ_NAMESPACE: "wiz"
-  HELM_RELEASE: "wiz-sensor"
-  # Point this at the internal Helm proxy if runners cannot reach charts.wiz.io.
-  # The public index serves chart archives from wiz-sec.github.io, so both hosts are needed without a proxy.
-  WIZ_HELM_REPO_URL: "https://charts.wiz.io/"
-  WIZ_CHART: "wiz-sensor"
-  # Pinned on purpose. Bump through a merge request and review the render job diff.
-  WIZ_CHART_VERSION: "1.0.13112"
-  HELM_TIMEOUT: "15m"
-  # Space-separated overlay names from helm/values/optional, for example "proxy pull-secret".
-  # Override per cluster with an environment-scoped CI/CD variable of the same name.
-  EXTRA_VALUES: ""
-  # external = wiz-api-token is synced from CyberArk by the External Secrets Operator (standard).
-  # ci       = fallback, written from the masked variables WIZ_CLIENT_ID / WIZ_CLIENT_SECRET.
-  SECRETS_MODE: "external"
+  DEPLOY_VARIABLE:
+    value: "development"
+    options:
+      - "development"
+      - "testing"
+      - "staging"
+      - "staging-dr"
+      - "production"
+      - "production-dr"
+    description: "Target OpenShift environment"
+  HELM_REPO_URL: "https://artifactory.fcbint.net/artifactory/cloudsecurity-wiz-helm-remote/"
+  CHART_VERSION: "1.0.13112"
 
 default:
-  # Internal image that provides: bash, helm >= 3.11, oc, skopeo, yamllint, shellcheck.
-  image: "<CI_TOOLS_IMAGE>"
-  tags:
-    - "<RUNNER_TAG>"
-
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# One entry per file in helm/values/clusters (file name without .yaml).
-.clusters:
-  parallel:
-    matrix:
-      - CLUSTER:
-          - "nonprod-example"
-
-.default-branch-manual:
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
+  image: artifactory.fcbint.net/container-factory/tools/openshift-helm/openshift-helm:4.18.37-0
+  before_script:
+    - helm repo add wiz-sec "$HELM_REPO_URL"
+    - helm repo update
 
 lint:
-  stage: validate
+  stage: lint
   script:
-    - yamllint -c .yamllint.yml .gitlab-ci.yml helm manifests
-    - shellcheck -x -P scripts scripts/*.sh
-    - scripts/check-placeholders.sh
-
-render:
-  stage: render
-  extends: .clusters
-  script:
-    - scripts/render.sh
-  artifacts:
-    name: "rendered-$CLUSTER"
-    paths:
-      - rendered/
-    expire_in: 30 days
+    - helm template wiz-sensor wiz-sec/wiz-sensor --version "$CHART_VERSION" -f values.yaml
 
 deploy:
   stage: deploy
-  extends:
-    - .clusters
-    - .default-branch-manual
-  # Environment-scoped variables: OPENSHIFT_API_URL, OPENSHIFT_TOKEN, optional OPENSHIFT_CA_FILE.
-  # The Wiz credential is not a CI variable. It is synced from CyberArk (manifests/external-secrets).
+  when: manual
   environment:
-    name: openshift/$CLUSTER
-  resource_group: wiz-$CLUSTER
+    name: $DEPLOY_VARIABLE
+  # OSE_HOST_URL, OSE_USERNAME, OSE_PASSWORD, OSE_PROJECT_NAME are the environment-scoped group variables.
   script:
-    - scripts/oc-login.sh
-    - scripts/deploy.sh
-    - scripts/validate.sh
-
-verify:
-  stage: verify
-  extends:
-    - .clusters
-    - .default-branch-manual
-  environment:
-    name: openshift/$CLUSTER
-    action: verify
-  script:
-    - scripts/oc-login.sh
-    - scripts/validate.sh
-  allow_failure: true
+    - oc login "$OSE_HOST_URL" --username "$OSE_USERNAME" --password "$OSE_PASSWORD"
+    - oc -n "$OSE_PROJECT_NAME" apply -f externalsecret.yaml
+    - oc -n "$OSE_PROJECT_NAME" wait externalsecret/wiz-api-token --for=condition=Ready --timeout=120s
+    - >
+      helm upgrade --install wiz-sensor wiz-sec/wiz-sensor
+      --version "$CHART_VERSION"
+      --namespace "$OSE_PROJECT_NAME"
+      -f values.yaml
+      --set sensorClusterName="fcb-ose-$DEPLOY_VARIABLE"
+      --wait --timeout 10m
+    - oc -n "$OSE_PROJECT_NAME" get daemonset,pods -o wide
