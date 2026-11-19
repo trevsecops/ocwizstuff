@@ -1,0 +1,21 @@
+# Wiz Runtime Sensor on OpenShift. Chart: wiz-sec/wiz-sensor
+
+# Chart creates the SecurityContextConstraints the Sensor needs.
+openshift: true
+
+# Wiz service account (type: Sensor). Secret is created by externalsecret.yaml from CyberArk.
+wizApiToken:
+  secret:
+    create: false
+    name: wiz-api-token
+
+# Mirrored image in Artifactory. Final reference: <registry>/sensor:v1
+image:
+  registry: "artifactory.fcbint.net/<SENSOR_IMAGE_REPO>"
+  repository: sensor
+  tag: v1
+
+# No Wiz registry pull key. The image comes from Artifactory.
+imagePullSecret:
+  required: false
+  create: false
